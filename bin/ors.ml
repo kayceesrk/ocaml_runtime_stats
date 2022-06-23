@@ -10,18 +10,18 @@ let hist =
          ~significant_figures:3
 
 let print_percentiles () =
+  let ms ns = ns /. 1000000. in
+  Printf.eprintf "\n";
+  Printf.eprintf "#[Mean (ms):\t%.2f,\t Stddev (ms):\t%.2f]\n"
+    (H.mean hist |> ms) (H.stddev hist |> ms);
+  Printf.eprintf "#[Min (ms):\t%.2f,\t max (ms):\t%.2f]\n"
+    (float_of_int (H.min hist) |> ms) (float_of_int (H.max hist) |> ms);
+
+  Printf.eprintf "\n";
   let percentiles = [| 50.0; 75.0; 90.0; 99.0; 99.9; 99.99; 99.999; 100.0 |] in
-
-  Printf.eprintf "\n";
-  Printf.eprintf "#[Mean (ns):\t%d,\t Stddev (ns):\t%d]\n"
-    (int_of_float (H.mean hist)) (int_of_float (H.stddev hist));
-  Printf.eprintf "#[Min (ns):\t%d,\t max (ns):\t%d]\n"
-    (H.min hist) (H.max hist);
-
-  Printf.eprintf "\n";
-  Printf.eprintf "percentile \t latency (ns)\n";
-  Fun.flip Array.iter percentiles (fun p ->
-    Printf.eprintf "%f \t %d\n" p (H.value_at_percentile hist p))
+  Printf.eprintf "percentile \t latency (ms)\n";
+  Fun.flip Array.iter percentiles (fun p -> Printf.eprintf "%.4f \t %.2f\n" p
+    (float_of_int (H.value_at_percentile hist p) |> ms))
 
 let lifecycle _domain_id _ts lifecycle_event data =
     match lifecycle_event with
@@ -33,8 +33,10 @@ let lifecycle _domain_id _ts lifecycle_event data =
         | None -> assert false
         end
     | EV_RING_STOP ->
-        Printf.eprintf "[pid=%d] Ring ended\n" (Option.get !monitored_pid);
+        let pid = Option.get !monitored_pid in
+        Printf.eprintf "[pid=%d] Ring ended\n" pid;
         print_percentiles ();
+        Unix.unlink (string_of_int pid ^ ".events");
         H.close hist;
         exit 0
     | _ -> ()
@@ -76,7 +78,8 @@ let () =
     Callbacks.create ~runtime_begin ~runtime_end ~lifecycle ~lost_events ()
   in
   let rec loop () =
-    ignore @@ read_poll cursor callbacks None;
+    let n = read_poll cursor callbacks None in
+    if n = 0 then Domain.cpu_relax ();
     loop ()
   in
   loop ()
