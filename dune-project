@@ -5,22 +5,22 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github kayceesrk/ocaml_runtime_stats))
 
-(authors "Author Name")
+(authors "KC Sivaramakrishnan")
 
-(maintainers "Maintainer Name")
+(maintainers "KC Sivaramakrishnan")
 
-(license LICENSE)
+(license MIT)
 
 (documentation https://url/to/documentation)
 
 (package
  (name ocaml_runtime_stats)
- (synopsis "A short synopsis")
- (description "A longer description")
- (depends ocaml dune)
+ (synopsis "Runtime stats of OCaml programs")
+ (description "Runtime stats of OCaml programs")
+ (depends ocaml dune hdr_histogram)
  (tags
-  (topics "to describe" your project)))
+  ("profiling" "tail latency")))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/dune-files.html#dune-project

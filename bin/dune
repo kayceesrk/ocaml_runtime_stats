@@ -1,4 +1,4 @@
 (executable
- (public_name ocaml_runtime_stats)
- (name main)
- (libraries ocaml_runtime_stats))
+ (public_name ors)
+ (name ors)
+ (libraries hdr_histogram unix runtime_events ocaml_runtime_stats))
