@@ -3,7 +3,7 @@ module H = Hdr_histogram
 open Runtime_events
 
 let monitored_pid = ref None
-let current_event = ref None
+let current_event = Hashtbl.create 13
 
 let hist =
   H.init ~lowest_discernible_value:10 ~highest_trackable_value:10_000_000_000
@@ -29,27 +29,28 @@ let lifecycle _domain_id _ts lifecycle_event data =
         begin match data with
         | Some pid ->
             assert (pid = Option.get !monitored_pid);
-            Printf.eprintf "[pid=%d] Ring started\n" pid
+            Printf.eprintf "[pid=%d] Ring started\n%!" pid
         | None -> assert false
         end
     | EV_RING_STOP ->
         let pid = Option.get !monitored_pid in
-        Printf.eprintf "[pid=%d] Ring ended\n" pid;
+        Printf.eprintf "[pid=%d] Ring ended\n%!" pid;
         print_percentiles ();
+        ignore @@ Unix.waitpid [] pid;
         Unix.unlink (string_of_int pid ^ ".events");
         H.close hist;
         exit 0
     | _ -> ()
 
-let runtime_begin _domain_id ts phase =
-  match !current_event with
-  | None -> current_event := Some (phase, Timestamp.to_int64 ts)
+let runtime_begin domain_id ts phase =
+  match Hashtbl.find_opt current_event domain_id with
+  | None -> Hashtbl.add current_event domain_id (phase, Timestamp.to_int64 ts)
   | _ -> ()
 
-let runtime_end _domain_id ts phase =
-  match !current_event with
+let runtime_end domain_id ts phase =
+  match Hashtbl.find_opt current_event domain_id with
   | Some (saved_phase, saved_ts) when (saved_phase = phase) ->
-      current_event := None;
+      Hashtbl.remove current_event domain_id;
       let latency =
         Int64.to_int (Int64.sub (Timestamp.to_int64 ts) saved_ts)
       in
@@ -57,19 +58,20 @@ let runtime_end _domain_id ts phase =
   | _ -> ()
 
 let lost_events _domain_id num =
-  Printf.eprintf "[pid=%d] Lost %d events\n" (Option.get !monitored_pid) num
+  Printf.eprintf "[pid=%d] Lost %d events\n%!" (Option.get !monitored_pid) num
 
 let () =
   let cmd = Sys.argv.(1) in
   let cmd_list = String.split_on_char ' ' cmd in
+  let systemenv = Unix.environment () in
   let pid =
-    Unix.(create_process_env (List.hd cmd_list)
-      (Array.of_list (List.tl cmd_list))
-      [| "OCAML_RUNTIME_EVENTS_START=1"; "OCAML_RUNTIME_EVENTS_PRESERVE=1" |]
+    Unix.(create_process_env (List.hd cmd_list) (Array.of_list cmd_list)
+      (Array.append [| "OCAML_RUNTIME_EVENTS_START=1";
+                       "OCAML_RUNTIME_EVENTS_PRESERVE=1" |] systemenv)
       stdin stdout stderr)
   in
   monitored_pid := Some pid;
-  Printf.eprintf "[pid=%d] Command started\n" pid;
+  Printf.eprintf "[pid=%d] Command started\n%!" pid;
   let cwd = Unix.getcwd () in
 
   Unix.sleepf 0.1;
